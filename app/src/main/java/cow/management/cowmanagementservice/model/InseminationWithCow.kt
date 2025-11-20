@@ -9,5 +9,5 @@ data class InseminationWithCow(
         parentColumn = "cowId",
         entityColumn = "id"
     )
-    val cow: Cow // The female cow that was inseminated
+    val cow: Cow
 )

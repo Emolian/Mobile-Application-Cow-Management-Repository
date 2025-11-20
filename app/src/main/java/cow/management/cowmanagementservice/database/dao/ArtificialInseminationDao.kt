@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import cow.management.cowmanagementservice.model.ArtificialInsemination
 import cow.management.cowmanagementservice.model.InseminationWithCow
+import cow.management.cowmanagementservice.model.InseminationWithSireEarTag
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -28,4 +29,12 @@ interface ArtificialInseminationDao {
     @Transaction
     @Query("SELECT * FROM artificial_inseminations WHERE sireId = :sireId")
     fun getInseminationsBySire(sireId: Long): Flow<List<InseminationWithCow>>
+
+    @Transaction
+    @Query("""
+        SELECT ai.*, c.earTag as sireEarTag FROM artificial_inseminations ai
+        LEFT JOIN cows c ON ai.sireId = c.id
+        WHERE ai.cowId = :cowId
+    """)
+    fun getInseminationsWithSireEarTag(cowId: Long): Flow<List<InseminationWithSireEarTag>>
 }

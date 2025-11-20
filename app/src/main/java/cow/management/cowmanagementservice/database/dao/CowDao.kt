@@ -30,6 +30,9 @@ interface CowDao {
     @Query("SELECT * FROM cows WHERE id = :cowId")
     suspend fun getCowById(cowId: Long): Cow?
 
+    @Query("SELECT * FROM cows WHERE earTag = :earTag")
+    suspend fun getCowByEarTag(earTag: String): Cow?
+
     @Transaction
     @Query("SELECT * FROM cows")
     fun getAllCowsWithDetails(): Flow<List<CowWithDetails>>

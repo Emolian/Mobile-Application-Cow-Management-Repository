@@ -10,6 +10,7 @@ import cow.management.cowmanagementservice.model.BirthWithCalves
 import cow.management.cowmanagementservice.model.Cow
 import cow.management.cowmanagementservice.model.CowWithDetails
 import cow.management.cowmanagementservice.model.InseminationWithCow
+import cow.management.cowmanagementservice.model.InseminationWithSireEarTag
 import cow.management.cowmanagementservice.model.Sex
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
@@ -32,12 +33,20 @@ class CowRepository(
         return cowDao.getCowsByBirthDate(date)
     }
 
+    suspend fun getCowByEarTag(earTag: String): Cow? {
+        return cowDao.getCowByEarTag(earTag)
+    }
+
     fun getBirthsWithCalves(motherId: Long): Flow<List<BirthWithCalves>> {
         return birthDao.getBirthsWithCalves(motherId)
     }
 
     fun getInseminationsBySire(sireId: Long): Flow<List<InseminationWithCow>> {
         return artificialInseminationDao.getInseminationsBySire(sireId)
+    }
+
+    fun getInseminationsWithSireEarTag(cowId: Long): Flow<List<InseminationWithSireEarTag>> {
+        return artificialInseminationDao.getInseminationsWithSireEarTag(cowId)
     }
 
     suspend fun insertCow(cow: Cow) {
@@ -53,9 +62,7 @@ class CowRepository(
                     birthDao.deleteBirthsByCowId(originalCow.id)
                     artificialInseminationDao.deleteInseminationsByCowId(originalCow.id)
                 }
-                Sex.MALE -> {
-                    // The logic to remove sire from calves is no longer needed.
-                }
+                Sex.MALE -> { /* No longer needed */ }
             }
         }
         cowDao.updateCow(updatedCow)
@@ -69,12 +76,24 @@ class CowRepository(
         birthDao.insertBirth(birth)
     }
 
+    @Transaction
     suspend fun deleteAndDissociate(birth: Birth) {
-        birthDao.deleteAndDissociate(birth)
+        val calves = birthDao.getCalvesOfBirth(birth.id)
+        calves.forEach { 
+            cowDao.updateCow(it.copy(birthId = null))
+        }
+        birthDao.deleteBirth(birth)
     }
 
+    @Transaction
     suspend fun updateBirthAndCalves(birth: Birth, addedCalves: List<Cow>, removedCalves: List<Cow>) {
-        birthDao.updateBirthAndCalves(birth, addedCalves, removedCalves)
+        birthDao.updateBirth(birth)
+        addedCalves.forEach { 
+            cowDao.updateCow(it.copy(birthId = birth.id))
+        }
+        removedCalves.forEach {
+            cowDao.updateCow(it.copy(birthId = null))
+        }
     }
 
     suspend fun insertInsemination(insemination: ArtificialInsemination) {

@@ -20,5 +20,5 @@ data class Birth(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val date: LocalDate,
-    val motherId: Long // The cow that gave birth
+    val motherId: Long
 )

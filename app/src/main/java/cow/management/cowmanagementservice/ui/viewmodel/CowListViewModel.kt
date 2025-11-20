@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -31,6 +32,9 @@ class CowListViewModel(private val cowRepository: CowRepository) : ViewModel() {
 
     private val _inseminationsBySire = MutableStateFlow<List<InseminationWithCow>>(emptyList())
     val inseminationsBySire: StateFlow<List<InseminationWithCow>> = _inseminationsBySire.asStateFlow()
+    
+    private val _inseminationsForCow = MutableStateFlow<List<InseminationWithSireEarTag>>(emptyList())
+    val inseminationsForCow: StateFlow<List<InseminationWithSireEarTag>> = _inseminationsForCow.asStateFlow()
 
     private val _errorState = MutableStateFlow<String?>(null)
     val errorState: StateFlow<String?> = _errorState.asStateFlow()
@@ -58,6 +62,19 @@ class CowListViewModel(private val cowRepository: CowRepository) : ViewModel() {
                 _inseminationsBySire.value = it
             }
         }
+    }
+
+    fun loadInseminationsForCow(cowId: Long) {
+        viewModelScope.launch {
+            cowRepository.getInseminationsWithSireEarTag(cowId).collect {
+                _inseminationsForCow.value = it
+            }
+        }
+    }
+
+    suspend fun getEarTagById(id: Long?): String? {
+        if (id == null) return null
+        return cowRepository.getCowByEarTag(cows.value.find { it.cow.id == id }?.cow?.earTag ?: "")?.earTag
     }
 
     fun addCow(
@@ -124,9 +141,15 @@ class CowListViewModel(private val cowRepository: CowRepository) : ViewModel() {
         }
     }
 
-    fun addBirth(birth: Birth) {
+    fun addBirth(motherId: Long, date: LocalDate) {
         viewModelScope.launch {
-            cowRepository.insertBirth(birth)
+            val births = cowRepository.getBirthsWithCalves(motherId).first()
+            if (births.any { it.birth.date == date }) {
+                _errorState.value = "A birth on this date has already been recorded for this cow."
+            } else {
+                cowRepository.insertBirth(Birth(date = date, motherId = motherId))
+                _operationSuccess.value = true
+            }
         }
     }
 
@@ -139,19 +162,56 @@ class CowListViewModel(private val cowRepository: CowRepository) : ViewModel() {
     fun updateBirth(birth: Birth, addedCalves: List<Cow>, removedCalves: List<Cow>) {
         viewModelScope.launch {
             cowRepository.updateBirthAndCalves(birth, addedCalves, removedCalves)
+            _operationSuccess.value = true
         }
     }
 
-    fun addInsemination(insemination: ArtificialInsemination) {
+    fun addInsemination(cowId: Long, date: String, sireEarTag: String?) {
         viewModelScope.launch {
-            cowRepository.insertInsemination(insemination)
+            try {
+                val sireId = getAndValidateSireId(sireEarTag)
+                if (!sireEarTag.isNullOrBlank() && sireId == null) return@launch 
+
+                cowRepository.insertInsemination(ArtificialInsemination(date = LocalDate.parse(date, DateTimeFormatter.ofPattern("dd.MM.yyyy")), cowId = cowId, sireId = sireId))
+                _operationSuccess.value = true
+            } catch (e: DateTimeParseException) {
+                _errorState.value = "Invalid date format. Please use DD.MM.YYYY."
+            }
         }
     }
 
-    fun updateInsemination(insemination: ArtificialInsemination) {
+    fun updateInsemination(insemination: ArtificialInsemination, newDate: String, newSireEarTag: String?) {
         viewModelScope.launch {
-            cowRepository.updateInsemination(insemination)
+             try {
+                val sireId = getAndValidateSireId(newSireEarTag)
+                if (!newSireEarTag.isNullOrBlank() && sireId == null) return@launch
+                
+                val updatedInsemination = insemination.copy(
+                    date = LocalDate.parse(newDate, DateTimeFormatter.ofPattern("dd.MM.yyyy")),
+                    sireId = sireId
+                )
+                cowRepository.updateInsemination(updatedInsemination)
+                _operationSuccess.value = true
+            } catch (e: DateTimeParseException) {
+                _errorState.value = "Invalid date format. Please use DD.MM.YYYY."
+            }
         }
+    }
+
+    private suspend fun getAndValidateSireId(sireEarTag: String?): Long? {
+        if (sireEarTag.isNullOrBlank()) {
+            return null
+        }
+        val sire = cowRepository.getCowByEarTag(sireEarTag)
+        if (sire == null) {
+            _errorState.value = "Sire with ear tag '$sireEarTag' not found."
+            return null
+        }
+        if (sire.sex != Sex.MALE) {
+            _errorState.value = "Cow '$sireEarTag' is not a male."
+            return null
+        }
+        return sire.id
     }
 
     fun deleteInsemination(insemination: ArtificialInsemination) {

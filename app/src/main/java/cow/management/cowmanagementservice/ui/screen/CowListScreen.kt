@@ -37,7 +37,6 @@ import cow.management.cowmanagementservice.ui.viewmodel.ViewModelFactory
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-// Main Screen Composable
 @Composable
 fun CowListScreen(modifier: Modifier = Modifier, factory: ViewModelFactory) {
     val viewModel: CowListViewModel = viewModel(factory = factory)
@@ -48,11 +47,15 @@ fun CowListScreen(modifier: Modifier = Modifier, factory: ViewModelFactory) {
     var showAddCowDialog by remember { mutableStateOf(false) }
     var selectedCow by remember { mutableStateOf<CowWithDetails?>(null) }
     var showUpdateCowDialog by remember { mutableStateOf(false) }
+    var showAddInseminationDialog by remember { mutableStateOf(false) }
+    var showAddBirthDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(success) {
         if (success) {
             showAddCowDialog = false
             showUpdateCowDialog = false
+            showAddInseminationDialog = false
+            showAddBirthDialog = false
             viewModel.onOperationCompleted()
         }
     }
@@ -61,7 +64,7 @@ fun CowListScreen(modifier: Modifier = Modifier, factory: ViewModelFactory) {
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = LightGreen, // Apply the light green background color
+        containerColor = LightGreen,
         floatingActionButton = { FloatingActionButton(onClick = { showAddCowDialog = true }) { Icon(Icons.Default.Add, contentDescription = "Add Cow") } }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
@@ -69,9 +72,7 @@ fun CowListScreen(modifier: Modifier = Modifier, factory: ViewModelFactory) {
                 text = "The cows in your plantation are:",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
                 textAlign = TextAlign.Center
             )
             LazyColumn {
@@ -105,13 +106,32 @@ fun CowListScreen(modifier: Modifier = Modifier, factory: ViewModelFactory) {
                 cowWithDetails = it,
                 onDismiss = { selectedCow = null },
                 onUpdateClick = { showUpdateCowDialog = true },
+                onAddInsemination = { showAddInseminationDialog = true },
+                onAddBirth = { showAddBirthDialog = true },
                 viewModel = viewModel
+            )
+        }
+
+        if (showAddInseminationDialog) {
+            AddInseminationDialog(
+                onDismiss = { showAddInseminationDialog = false },
+                onSave = { date, sireEarTag ->
+                    viewModel.addInsemination(it.cow.id, date, sireEarTag)
+                }
+            )
+        }
+
+        if (showAddBirthDialog) {
+            AddBirthDialog(
+                onDismiss = { showAddBirthDialog = false },
+                onSave = { date ->
+                    viewModel.addBirth(it.cow.id, date)
+                }
             )
         }
     }
 }
 
-//region Main Screen Components
 @Composable
 fun CowListItem(cowWithDetails: CowWithDetails, onClick: (CowWithDetails) -> Unit, modifier: Modifier = Modifier) {
     ListItem(
@@ -120,10 +140,7 @@ fun CowListItem(cowWithDetails: CowWithDetails, onClick: (CowWithDetails) -> Uni
         supportingContent = { Text("${cowWithDetails.cow.breed.name.formatEnum()} | ${cowWithDetails.cow.sex.name.formatEnum()}") },
         leadingContent = {
             Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
                 Text(text = cowWithDetails.cow.earTag.take(1).uppercase(), color = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -133,32 +150,11 @@ fun CowListItem(cowWithDetails: CowWithDetails, onClick: (CowWithDetails) -> Uni
     Divider()
 }
 
-@Composable
-fun SectionTitle(title: String, onClickAdd: (() -> Unit)?) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 16.dp, bottom = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        if (onClickAdd != null) {
-            IconButton(onClick = onClickAdd, modifier = Modifier.size(24.dp)) {
-                Icon(Icons.Default.Add, contentDescription = "Add $title")
-            }
-        }
-    }
-}
-//endregion
-
-//region Cow Dialogs
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddCowDialog(
     onDismiss: () -> Unit,
-    onSave: (String, Breed?, String, String, String, Sex?, Category?) -> Unit,
-    modifier: Modifier = Modifier
+    onSave: (String, Breed?, String, String, String, Sex?, Category?) -> Unit
 ) { 
     val scrollState = rememberScrollState()
     var earTag by remember { mutableStateOf("") }
@@ -170,7 +166,6 @@ fun AddCowDialog(
     var selectedBreed by remember { mutableStateOf<Breed?>(null) }
 
     AlertDialog(
-        modifier = modifier,
         onDismissRequest = onDismiss,
         title = { Text(text = "Add a new cow") },
         text = {
@@ -187,13 +182,7 @@ fun AddCowDialog(
                 EnumDropDown(options = Category.values(), selected = selectedCategory, onSelected = { selectedCategory = it }, label = "Category")
             }
         },
-        confirmButton = {
-            TextButton(
-                onClick = { onSave(earTag, selectedBreed, birthDate, entryDate, exitDate, selectedSex, selectedCategory) }
-            ) {
-                Text("Save")
-            }
-        },
+        confirmButton = { TextButton(onClick = { onSave(earTag, selectedBreed, birthDate, entryDate, exitDate, selectedSex, selectedCategory) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
@@ -203,8 +192,7 @@ fun AddCowDialog(
 fun UpdateCowDialog(
     cow: Cow,
     onDismiss: () -> Unit,
-    onSave: (Cow, String, Breed?, String, String, String, Sex?, Category?) -> Unit,
-    modifier: Modifier = Modifier
+    onSave: (Cow, String, Breed?, String, String, String, Sex?, Category?) -> Unit
 ) {
     val dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
     val scrollState = rememberScrollState()
@@ -217,7 +205,6 @@ fun UpdateCowDialog(
     var selectedBreed by remember { mutableStateOf<Breed?>(cow.breed) }
 
     AlertDialog(
-        modifier = modifier,
         onDismissRequest = onDismiss,
         title = { Text(text = "Update a cow") },
         text = {
@@ -234,13 +221,7 @@ fun UpdateCowDialog(
                 EnumDropDown(options = Category.values(), selected = selectedCategory, onSelected = { selectedCategory = it }, label = "Category")
             }
         },
-        confirmButton = {
-            TextButton(
-                onClick = { onSave(cow, earTag, selectedBreed, birthDate, entryDate, exitDate, selectedSex, selectedCategory) }
-            ) {
-                Text("Save")
-            }
-        },
+        confirmButton = { TextButton(onClick = { onSave(cow, earTag, selectedBreed, birthDate, entryDate, exitDate, selectedSex, selectedCategory) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
@@ -250,25 +231,29 @@ fun CowDetailsDialog(
     cowWithDetails: CowWithDetails,
     onDismiss: () -> Unit,
     onUpdateClick: () -> Unit,
-    viewModel: CowListViewModel,
-    modifier: Modifier = Modifier
+    onAddInsemination: () -> Unit,
+    onAddBirth: () -> Unit,
+    viewModel: CowListViewModel
 ) {
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    var showAddInseminationDialog by remember { mutableStateOf(false) }
-    var showAddBirthDialog by remember { mutableStateOf(false) }
     var editingBirth by remember { mutableStateOf<BirthWithCalves?>(null) }
-    var editingInsemination by remember { mutableStateOf<ArtificialInsemination?>(null) }
+    var editingInsemination by remember { mutableStateOf<InseminationWithSireEarTag?>(null) }
     val dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
 
     when (cowWithDetails.cow.sex) {
-        Sex.FEMALE -> LaunchedEffect(cowWithDetails.cow.id) { viewModel.loadBirthsForCow(cowWithDetails.cow.id) }
+        Sex.FEMALE -> {
+            LaunchedEffect(cowWithDetails.cow.id) {
+                viewModel.loadBirthsForCow(cowWithDetails.cow.id)
+                viewModel.loadInseminationsForCow(cowWithDetails.cow.id)
+            }
+        }
         Sex.MALE -> LaunchedEffect(cowWithDetails.cow.id) { viewModel.loadInseminationsBySire(cowWithDetails.cow.id) }
     }
     val inseminationsBySire by viewModel.inseminationsBySire.collectAsStateWithLifecycle()
     val birthsWithCalves by viewModel.birthsWithCalves.collectAsStateWithLifecycle()
+    val inseminationsForCow by viewModel.inseminationsForCow.collectAsStateWithLifecycle()
 
     AlertDialog(
-        modifier = modifier,
         onDismissRequest = onDismiss,
         title = { Text(text = "Details for ${cowWithDetails.cow.earTag}") },
         text = {
@@ -277,16 +262,17 @@ fun CowDetailsDialog(
                 item { DetailRow(label = "Breed", value = cowWithDetails.cow.breed.name.formatEnum()) }
                 item { DetailRow(label = "Category", value = cowWithDetails.cow.category.name.formatEnum()) }
                 item { DetailRow(label = "Birth Date", value = cowWithDetails.cow.birthDate.format(dateFormatter)) }
+                item { DetailRow(label = "Entry Date", value = cowWithDetails.cow.entryDate.format(dateFormatter)) }
                 item { cowWithDetails.cow.exitDate?.let { DetailRow(label = "Exit Date", value = it.format(dateFormatter)) } }
 
                 when (cowWithDetails.cow.sex) {
                     Sex.FEMALE -> {
-                        item { SectionTitle(title = "Inseminations", onClickAdd = { showAddInseminationDialog = true }) }
-                        if (cowWithDetails.inseminations.isEmpty()) item { Text("  None") } else items(cowWithDetails.inseminations) { insemination ->
-                            Text("  - ${insemination.date.format(dateFormatter)} (Sire ID: ${insemination.sireId ?: "N/A"})", modifier = Modifier.clickable { editingInsemination = insemination })
+                        item { SectionTitle(title = "Inseminations", onClickAdd = onAddInsemination) }
+                        if (inseminationsForCow.isEmpty()) item { Text("  None") } else items(inseminationsForCow) { insemination ->
+                            Text("  - ${insemination.insemination.date.format(dateFormatter)} (Sire: ${insemination.sireEarTag ?: "N/A"})", modifier = Modifier.clickable { editingInsemination = insemination })
                         }
 
-                        item { SectionTitle(title = "Births", onClickAdd = { showAddBirthDialog = true }) }
+                        item { SectionTitle(title = "Births", onClickAdd = onAddBirth) }
                         if (birthsWithCalves.isEmpty()) item { Text("  None") } else items(birthsWithCalves) { birth ->
                             Text("  - ${birth.birth.date.format(dateFormatter)}", modifier = Modifier.clickable { editingBirth = birth })
                         }
@@ -294,7 +280,7 @@ fun CowDetailsDialog(
                     Sex.MALE -> {
                         item { SectionTitle(title = "Inseminations Performed", onClickAdd = null) }
                         if (inseminationsBySire.isEmpty()) item { Text("  None") } else items(inseminationsBySire) { insemination ->
-                            Text("  - ${insemination.insemination.date.format(dateFormatter)} with ${insemination.cow.earTag}", modifier = Modifier.clickable { /* Future Edit Action */ })
+                            Text("  - ${insemination.insemination.date.format(dateFormatter)} with ${insemination.cow.earTag}")
                         }
                     }
                 }
@@ -308,15 +294,14 @@ fun CowDetailsDialog(
                 Spacer(modifier = Modifier.width(8.dp))
                 TextButton(onClick = onDismiss) { Text("Close") }
             }
-        },
-        dismissButton = {}
+        }
     )
 
     editingBirth?.let { 
         EditBirthDialog(birthWithCalves = it, onDismiss = { editingBirth = null }, viewModel = viewModel)
     }
     editingInsemination?.let { 
-        EditInseminationDialog(insemination = it, onDismiss = { editingInsemination = null }, viewModel = viewModel) 
+        EditInseminationDialog(inseminationWithSire = it, onDismiss = { editingInsemination = null }, viewModel = viewModel) 
     }
     
     if (showDeleteConfirmDialog) {
@@ -328,37 +313,17 @@ fun CowDetailsDialog(
             dismissButton = { TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("No") } }
         )
     }
-
-    if (showAddInseminationDialog) {
-        AddInseminationDialog(
-            onDismiss = { showAddInseminationDialog = false },
-            onSave = { date, sireId ->
-                viewModel.addInsemination(ArtificialInsemination(date = date, cowId = cowWithDetails.cow.id, sireId = sireId))
-            }
-        )
-    }
-
-    if (showAddBirthDialog) {
-        AddBirthDialog(
-            onDismiss = { showAddBirthDialog = false },
-            onSave = { date ->
-                viewModel.addBirth(Birth(date = date, motherId = cowWithDetails.cow.id))
-            }
-        )
-    }
 }
-//endregion
 
-//region Event Dialogs
 @Composable
 fun EditInseminationDialog(
-    insemination: ArtificialInsemination,
+    inseminationWithSire: InseminationWithSireEarTag,
     onDismiss: () -> Unit,
     viewModel: CowListViewModel
 ) {
     val dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
-    var date by remember { mutableStateOf(insemination.date.format(dateFormatter)) }
-    var sireId by remember { mutableStateOf(insemination.sireId?.toString() ?: "") }
+    var date by remember { mutableStateOf(inseminationWithSire.insemination.date.format(dateFormatter)) }
+    var sireEarTag by remember { mutableStateOf(inseminationWithSire.sireEarTag ?: "") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -367,23 +332,18 @@ fun EditInseminationDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextField(value = date, onValueChange = { date = it }, label = { Text("Insemination Date (DD.MM.YYYY)") })
-                TextField(value = sireId, onValueChange = { sireId = it }, label = { Text("Sire ID (Optional)") })
+                TextField(value = sireEarTag, onValueChange = { sireEarTag = it }, label = { Text("Sire Ear Tag (Optional)") })
             }
         },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            Row {
                 TextButton(onClick = { showDeleteConfirm = true }) { Text("Delete") }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
                 TextButton(
                     onClick = {
-                        val updatedInsemination = insemination.copy(
-                            date = LocalDate.parse(date, dateFormatter),
-                            sireId = sireId.toLongOrNull()
-                        )
-                        viewModel.updateInsemination(updatedInsemination)
+                        viewModel.updateInsemination(inseminationWithSire.insemination, date, sireEarTag)
                         onDismiss()
-                    },
-                    enabled = date.isNotBlank()
+                    }
                 ) { Text("Save") }
             }
         }
@@ -394,7 +354,7 @@ fun EditInseminationDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Confirm Delete") },
             text = { Text("Are you sure you want to delete this insemination record?") },
-            confirmButton = { TextButton(onClick = { viewModel.deleteInsemination(insemination); showDeleteConfirm = false; onDismiss() }) { Text("Yes") } },
+            confirmButton = { TextButton(onClick = { viewModel.deleteInsemination(inseminationWithSire.insemination); showDeleteConfirm = false; onDismiss() }) { Text("Yes") } },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("No") } }
         )
     }
@@ -430,24 +390,26 @@ fun EditBirthDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit Birth") },
         text = {
-            Column {
-                TextField(value = date, onValueChange = { date = it }, label = { Text("Birth Date (DD.MM.YYYY)") })
+            LazyColumn {
+                item { TextField(value = date, onValueChange = { date = it }, label = { Text("Birth Date (DD.MM.YYYY)") }, modifier = Modifier.fillMaxWidth()) }
 
-                Text("Calves in this Birth", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
-                calvesInBirth.forEach { calf ->
-                    Text("- ${calf.earTag}", modifier = Modifier.clickable { calvesInBirth.remove(calf); otherCalves.add(calf) })
+                item { Text("Calves in this Birth", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)) }
+                if(calvesInBirth.isEmpty()) item { Text("  None") } else items(calvesInBirth) { calf ->
+                    Text("  - ${calf.earTag}", modifier = Modifier.clickable { calvesInBirth.remove(calf); otherCalves.add(calf) })
                 }
 
-                Text("Other Calves Born on this Day", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
-                otherCalves.forEach { calf ->
-                    Text("+ ${calf.earTag}", modifier = Modifier.clickable { otherCalves.remove(calf); calvesInBirth.add(calf) })
+                item { Text("Other Calves Born on this Day", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)) }
+                if(otherCalves.isEmpty()) item { Text("  None") } else items(otherCalves) { calf ->
+                    Text("  + ${calf.earTag}", modifier = Modifier.clickable { otherCalves.remove(calf); calvesInBirth.add(calf) })
                 }
             }
         },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
         confirmButton = {
-             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+             Row {
                 TextButton(onClick = { showDeleteConfirm = true }) { Text("Delete") }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
                 TextButton(
                     onClick = {
                         val added = calvesInBirth.filter { it !in birthWithCalves.calves }
@@ -457,7 +419,7 @@ fun EditBirthDialog(
                         onDismiss()
                     }
                 ) { Text("Save") }
-            }
+             }
         }
     )
 
@@ -473,10 +435,9 @@ fun EditBirthDialog(
 }
 
 @Composable
-fun AddInseminationDialog(onDismiss: () -> Unit, onSave: (LocalDate, Long?) -> Unit) {
+fun AddInseminationDialog(onDismiss: () -> Unit, onSave: (String, String?) -> Unit) {
     var date by remember { mutableStateOf("") }
-    var sireId by remember { mutableStateOf("") }
-    val dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+    var sireEarTag by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -484,17 +445,10 @@ fun AddInseminationDialog(onDismiss: () -> Unit, onSave: (LocalDate, Long?) -> U
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextField(value = date, onValueChange = { date = it }, label = { Text("Insemination Date (DD.MM.YYYY)") })
-                TextField(value = sireId, onValueChange = { sireId = it }, label = { Text("Sire ID (Optional)") })
+                TextField(value = sireEarTag, onValueChange = { sireEarTag = it }, label = { Text("Sire Ear Tag (Optional)") })
             }
         },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    onSave(LocalDate.parse(date, dateFormatter), sireId.toLongOrNull())
-                },
-                enabled = date.isNotBlank()
-            ) { Text("Save") }
-        },
+        confirmButton = { TextButton(onClick = { onSave(date, sireEarTag) }, enabled = date.isNotBlank()) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
@@ -507,15 +461,8 @@ fun AddBirthDialog(onDismiss: () -> Unit, onSave: (LocalDate) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add Birth") },
-        text = {
-            TextField(value = date, onValueChange = { date = it }, label = { Text("Birth Date (DD.MM.YYYY)") })
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onSave(LocalDate.parse(date, dateFormatter)) },
-                enabled = date.isNotBlank()
-            ) { Text("Save") }
-        },
+        text = { TextField(value = date, onValueChange = { date = it }, label = { Text("Birth Date (DD.MM.YYYY)") }) },
+        confirmButton = { TextButton(onClick = { onSave(LocalDate.parse(date, dateFormatter)) }, enabled = date.isNotBlank()) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
@@ -529,9 +476,7 @@ fun ErrorDialog(errorMessage: String, onDismiss: () -> Unit) {
         confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } }
     )
 }
-//endregion
 
-//region Helpers
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun <T : Enum<T>> EnumDropDown(
@@ -577,4 +522,19 @@ fun DetailRow(label: String, value: String) {
         Text(text = value)
     }
 }
-//endregion
+
+@Composable
+fun SectionTitle(title: String, onClickAdd: (() -> Unit)?) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        if (onClickAdd != null) {
+            IconButton(onClick = onClickAdd, modifier = Modifier.size(24.dp)) {
+                Icon(Icons.Default.Add, contentDescription = "Add $title")
+            }
+        }
+    }
+}

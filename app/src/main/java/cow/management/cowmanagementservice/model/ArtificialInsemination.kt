@@ -26,6 +26,6 @@ data class ArtificialInsemination(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val date: LocalDate,
-    val cowId: Long, // The cow that was inseminated
-    val sireId: Long? // The sire used for insemination
+    val cowId: Long,
+    val sireId: Long?
 )
